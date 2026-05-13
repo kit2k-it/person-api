@@ -1,0 +1,6 @@
+export enum GoalStatus {
+  PLANNING = 'PLANNING',
+  IN_PROGRESS = 'IN_PROGRESS',
+  ACHIEVED = 'ACHIEVED',
+  ABANDONED = 'ABANDONED',
+}
