@@ -1,0 +1,518 @@
+// Prisma schema for Personal Management System API
+// Complete database design with all models and relationships
+// Compatible with Prisma 7+
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// User model
+model User {
+  id                    String    @id @default(cuid())
+  email                 String    @unique @db.VarChar(255)
+  password              String    @db.VarChar(255)
+  firstName             String?   @db.VarChar(100)
+  lastName              String?   @db.VarChar(100)
+  avatar                String?   @db.VarChar(500)
+  timezone              String?   @default("UTC") @db.VarChar(50)
+  locale                String?   @default("en") @db.VarChar(10)
+  emailVerified         Boolean   @default(false)
+  verificationToken     String?   @unique @db.VarChar(255)
+  verificationExpiresAt DateTime?
+  passwordResetToken    String?   @unique @db.VarChar(255)
+  passwordResetExpiresAt DateTime?
+  lastLoginAt           DateTime?
+  isActive              Boolean   @default(true)
+  role                  UserRole  @default(USER)
+  preferences           Json?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+  deletedAt             DateTime?
+
+  // Relations - one-to-many
+  refreshTokens         RefreshToken[]
+  tasks                 Task[]
+  goals                 Goal[]
+  habits                Habit[]
+  habitCheckIns         HabitCheckIn[]
+  notes                 Note[]
+  schedules             Schedule[]
+  dashboardViews       DashboardView[]
+  taskActivities       TaskActivity[]
+  habitActivities      HabitActivity[]
+  scheduleActivities   ScheduleActivity[]
+
+  @@map("users")
+  @@index([email])
+  @@index([role])
+  @@index([isActive])
+  @@index([createdAt])
+}
+
+// Refresh Token model
+model RefreshToken {
+  id        String   @id @default(cuid())
+  token     String   @unique @db.VarChar(500)
+  userId    String
+  expiresAt DateTime
+  revoked   Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("refresh_tokens")
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+// Task model
+model Task {
+  id              String        @id @default(cuid())
+  userId          String
+  title           String        @db.VarChar(255)
+  description     String?       @db.Text
+  status          TaskStatus    @default(TODO)
+  priority        TaskPriority  @default(MEDIUM)
+  dueDate         DateTime?
+  startDate       DateTime?
+  completedAt     DateTime?
+  estimatedTime   Int?
+  actualTime      Int?
+  tags            String[]
+  attachments     Json?
+  order           Int           @default(0)
+  reminderAt      DateTime?
+  isRecurring     Boolean       @default(false)
+  recurringPattern String?
+  parentTaskId    String?
+  project         String?       @db.VarChar(255)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  deletedAt       DateTime?
+
+  // Relations
+  user             User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  parentTask       Task?         @relation("TaskToTask", fields: [parentTaskId], references: [id])
+  subtasks         Task[]        @relation("TaskToTask")
+  taskDependencies TaskDependency[]
+  activities       TaskActivity[]
+
+  @@map("tasks")
+  @@index([userId])
+  @@index([status])
+  @@index([priority])
+  @@index([dueDate])
+  @@index([userId, status])
+  @@index([userId, dueDate])
+  @@index([userId, priority])
+  @@index([userId, tags])
+  @@index([userId, project])
+  @@index([createdAt])
+}
+
+// Task Dependency model (self-referencing many-to-many on Task)
+model TaskDependency {
+  id              String         @id @default(cuid())
+  taskId          String
+  dependsOnTaskId String
+  type            DependencyType @default(BLOCKS)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  // Relations - only one side needed
+  task            Task           @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@unique([taskId, dependsOnTaskId])
+  @@map("task_dependencies")
+  @@index([taskId])
+  @@index([dependsOnTaskId])
+}
+
+// Task Activity model
+model TaskActivity {
+  id        String        @id @default(cuid())
+  taskId    String
+  userId    String
+  type      ActivityType
+  details   Json?
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  // Relations
+  task      Task          @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user      User          @relation(fields: [userId], references: [id])
+
+  @@map("task_activities")
+  @@index([taskId])
+  @@index([userId])
+  @@index([createdAt])
+  @@index([taskId, createdAt])
+}
+
+// Goal model
+model Goal {
+  id            String        @id @default(cuid())
+  userId        String
+  title         String        @db.VarChar(255)
+  description   String?       @db.Text
+  status        GoalStatus    @default(PLANNING)
+  progress      Int           @default(0)
+  startDate     DateTime?
+  targetDate    DateTime?
+  completedAt   DateTime?
+  category      String?       @db.VarChar(100)
+  priority      GoalPriority  @default(MEDIUM)
+  color         String?       @default("#3B82F6") @db.VarChar(7)
+  icon          String?       @db.VarChar(50)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  deletedAt     DateTime?
+
+  // Relations
+  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  milestones    Milestone[]
+
+  @@map("goals")
+  @@index([userId])
+  @@index([status])
+  @@index([targetDate])
+  @@index([userId, status])
+  @@index([userId, targetDate])
+  @@index([createdAt])
+}
+
+// Milestone model
+model Milestone {
+  id          String   @id @default(cuid())
+  goalId      String
+  title       String   @db.VarChar(255)
+  description String?  @db.Text
+  dueDate     DateTime?
+  completedAt DateTime?
+  order       Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  goal        Goal     @relation(fields: [goalId], references: [id], onDelete: Cascade)
+
+  @@map("milestones")
+  @@index([goalId])
+  @@index([dueDate])
+}
+
+// Habit model
+model Habit {
+  id                String          @id @default(cuid())
+  userId            String
+  title             String          @db.VarChar(255)
+  description       String?         @db.Text
+  frequency         HabitFrequency  @default(DAILY)
+  targetCount       Int             @default(1)
+  unit              String?         @db.VarChar(50)
+  category          String?         @db.VarChar(100)
+  color             String?         @default("#10B981") @db.VarChar(7)
+  icon              String?         @db.VarChar(50)
+  startDate         DateTime        @default(now())
+  reminderAt        DateTime?
+  isActive          Boolean         @default(true)
+  streakCount       Int             @default(0)
+  longestStreak    Int             @default(0)
+  totalCompletions  Int             @default(0)
+  completionRate   Float           @default(0)
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+  deletedAt         DateTime?
+
+  // Relations
+  user              User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  checkIns          HabitCheckIn[]
+  activities        HabitActivity[]
+
+  @@map("habits")
+  @@index([userId])
+  @@index([frequency])
+  @@index([userId, isActive])
+  @@index([streakCount])
+  @@index([createdAt])
+}
+
+// Habit CheckIn model
+model HabitCheckIn {
+  id        String   @id @default(cuid())
+  habitId   String
+  userId    String
+  date      DateTime @db.Timestamptz(3)
+  completedAt DateTime?
+  notes     String?  @db.Text
+  count     Int      @default(1)
+  metadata  Json?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  habit     Habit    @relation(fields: [habitId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@unique([habitId, date])
+  @@map("habit_check_ins")
+  @@index([habitId])
+  @@index([userId])
+  @@index([date])
+  @@index([userId, date])
+  @@index([habitId, date])
+}
+
+// Habit Activity model
+model HabitActivity {
+  id        String   @id @default(cuid())
+  habitId   String
+  userId    String
+  type      ActivityType
+  details   Json?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  habit     Habit    @relation(fields: [habitId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@map("habit_activities")
+  @@index([habitId])
+  @@index([userId])
+  @@index([createdAt])
+}
+
+// Note model
+model Note {
+  id               String   @id @default(cuid())
+  userId           String
+  title            String   @db.VarChar(255)
+  content          String   @db.Text
+  category         String?  @db.VarChar(100)
+  tags             String[]
+  isFavorite       Boolean  @default(false)
+  isArchived       Boolean  @default(false)
+  isPinned         Boolean  @default(false)
+  attachments      Json?
+  wordCount        Int      @default(0)
+  readTime         Int?
+  version          Int      @default(1)
+  parentNoteId     String?
+  previousVersionId String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  deletedAt        DateTime?
+
+  // Relations
+  user             User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  parentNote       Note?       @relation("NoteToNote", fields: [parentNoteId], references: [id])
+  childNotes       Note[]      @relation("NoteToNote")
+  versions         NoteVersion[]
+
+  @@map("notes")
+  @@index([userId])
+  @@index([category])
+  @@index([isFavorite])
+  @@index([userId, isFavorite])
+  @@index([userId, category])
+  @@index([createdAt])
+}
+
+// Note Version model
+model NoteVersion {
+  id             String   @id @default(cuid())
+  noteId         String
+  version        Int
+  title          String   @db.VarChar(255)
+  content        String   @db.Text
+  changeSummary  String?  @db.VarChar(255)
+  createdAt      DateTime @default(now())
+  createdBy      String
+
+  @@unique([noteId, version])
+  @@map("note_versions")
+  @@index([noteId])
+  @@index([createdAt])
+
+  note           Note      @relation(fields: [noteId], references: [id], onDelete: Cascade)
+}
+
+// Schedule model
+model Schedule {
+  id              String            @id @default(cuid())
+  userId          String
+  title           String            @db.VarChar(255)
+  description     String?           @db.Text
+  type            ScheduleType      @default(EVENT)
+  startDate       DateTime
+  endDate         DateTime?
+  isAllDay        Boolean           @default(false)
+  timezone        String?           @db.VarChar(50)
+  location        String?           @db.VarChar(500)
+  color           String?           @default("#8B5CF6") @db.VarChar(7)
+  category        String?           @db.VarChar(100)
+  recurrence      Json?
+  reminder        Json?
+  priority        SchedulePriority  @default(NORMAL)
+  isPrivate       Boolean           @default(false)
+  attachments     Json?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  deletedAt       DateTime?
+
+  // Relations
+  user            User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  activities      ScheduleActivity[]
+
+  @@map("schedules")
+  @@index([userId])
+  @@index([startDate])
+  @@index([endDate])
+  @@index([userId, startDate])
+  @@index([type])
+  @@index([category])
+  @@index([createdAt])
+}
+
+// Schedule Activity model
+model ScheduleActivity {
+  id        String   @id @default(cuid())
+  scheduleId String
+  userId    String
+  type      ActivityType
+  details   Json?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  schedule  Schedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@map("schedule_activities")
+  @@index([scheduleId])
+  @@index([userId])
+  @@index([createdAt])
+}
+
+// Dashboard View model
+model DashboardView {
+  id        String   @id @default(cuid())
+  userId    String
+  name      String   @db.VarChar(255)
+  config    Json
+  isDefault Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("dashboard_views")
+  @@index([userId])
+  @@index([isDefault])
+}
+
+// Activity Log model (no relations needed, just references)
+model ActivityLog {
+  id          String           @id @default(cuid())
+  userId      String?
+  actorId     String?
+  action      String           @db.VarChar(100)
+  resource    String           @db.VarChar(100)
+  resourceId  String?
+  details     Json?
+  ipAddress   String?          @db.VarChar(45)
+  userAgent   String?          @db.VarChar(500)
+  createdAt   DateTime         @default(now())
+
+  @@map("activity_logs")
+  @@index([userId])
+  @@index([actorId])
+  @@index([action])
+  @@index([resource])
+  @@index([resourceId])
+  @@index([createdAt])
+  @@index([userId, createdAt])
+}
+
+// Enums
+enum UserRole {
+  ADMIN
+  USER
+}
+
+enum TaskStatus {
+  TODO
+  IN_PROGRESS
+  DONE
+  CANCELLED
+}
+
+enum TaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum GoalStatus {
+  PLANNING
+  IN_PROGRESS
+  ACHIEVED
+  ABANDONED
+}
+
+enum GoalPriority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum HabitFrequency {
+  DAILY
+  WEEKLY
+  MONTHLY
+  CUSTOM
+}
+
+enum DependencyType {
+  BLOCKS
+  IS_BLOCKED_BY
+}
+
+enum ScheduleType {
+  EVENT
+  TASK
+  REMINDER
+  HOLIDAY
+  PERSONAL
+  WORK
+}
+
+enum SchedulePriority {
+  LOW
+  NORMAL
+  HIGH
+}
+
+enum ActivityType {
+  CREATED
+  UPDATED
+  DELETED
+  STATUS_CHANGED
+  COMMENT_ADDED
+  ATTACHMENT_ADDED
+  CHECKIN
+  REMINDER_TRIGGERED
+  LOGIN
+  LOGOUT
+  PASSWORD_CHANGED
+}
